@@ -13,3 +13,6 @@ checkpoints/
 results/*.mp4
 results/*.npz
 huggingface_cache/
+hf_cache/
+openvla/
+LIBERO/

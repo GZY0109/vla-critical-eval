@@ -12,8 +12,10 @@
 
 ## 当前状态
 
-项目刚定稿，还没写代码。跟 `quadruped-wbc-mpc` 共用同一个 pod（已清理 Isaac Lab 相关缓存腾出磁盘）。
-下一步是 Phase 1：装 LIBERO + OpenVLA，复现官方 LoRA 微调基线成功率。
+Phase 1 完成，定案数字是 12 trials/task（n=120）跑出的 82.5%，没有重跑官方默认的 50 trials/task
+版本——GPU 跟 Phase 2 共用，不想在开 PPO 微调之前再占几个小时显存，小样本这个差距量级已经能说明
+环境装对了，不需要更大样本去证明。下一步：Phase 2，PPO 强化学习微调（LoRA-SFT checkpoint 基础上
+加 value head）。
 
 ## 重开 Pod / 新会话恢复工作的步骤（重要）
 
@@ -53,3 +55,25 @@ OpenVLA/LIBERO/微调/PPO/LoRA这几个JD关键词，改成了现在这个"LoRA�
   AHEAD论文揭示的"动态场景鲁棒性衰减"这个评测维度（真实、低风险），舍弃了"训练新架构"这部分。
 
 **下一步**：Phase 1 开工，装 LIBERO + OpenVLA，复现官方 LoRA 微调基线。
+
+### Phase 1 - 环境装好，LIBERO-Spatial 基线复现出 82.5%（n=120，小样本版本，定案不追加大样本）
+
+装好了 LIBERO + OpenVLA（`install_torch.log`/`install_libero.log`/`install_openvla.log`/
+`install_flashattn.log`/`install_libero_reqs.log` 是装环境的过程记录），跑了官方 checkpoint
+`openvla/openvla-7b-finetuned-libero-spatial` 在 `libero_spatial` 套件上的
+评测：`--num_trials_per_task 12`（10 任务 × 12 trials = 120 episodes），跑了 78 分钟，最终成功率
+82.5%（99/120）。
+
+核实过官方数字：论文报的是 84.7% ± 0.9%（n=1500，3 seed × 500 trials，A100）；社区有人用官方默认
+50 trials/task 复现出 83.6%，跟官方差 1.1pp。我们这次 82.5% 跟官方差 2.2pp，量级上跟社区那次的
+1.1pp 差距一致（我们样本量只有 1/4，方差本来就该更大），说明环境装对了，不是复现失败。
+
+一开始想按官方默认的 50 trials/task（500 episodes，预估 5-6 小时）重跑一版更贴官方数字的结果，
+后来决定不跑了——GPU 要留给 Phase 2 的 PPO 微调，不想在开工前先占几个小时显存，而且 82.5% 这个
+小样本数字加上跟社区复现差距的对比说明，已经足够证明环境和流程是对的，没必要为了让数字更好看
+去多跑一次。中途还讨论过在简历上把这次的结果写成"迭代了500次"——否掉了，因为项目本身的卖点就是
+"数字必须是真实跑出来的、如实报告"，编数字会让这条卖点本身变成假的，而且没必要：82.5% vs 84.7%±0.9%
+这个对比本身（含样本量差异的解释）就是一个站得住、显得懂行的复现结果。
+
+**下一步**：Phase 2，PPO 强化学习微调——在这次跑通的 LoRA-SFT checkpoint 基础上冻结主干、加
+value head，做 LoRA-SFT vs LoRA-SFT+PPO 的成功率对比和机制分析。
