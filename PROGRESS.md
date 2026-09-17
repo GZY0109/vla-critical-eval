@@ -12,10 +12,9 @@
 
 ## 当前状态
 
-Phase 1 完成，定案数字是 12 trials/task（n=120）跑出的 82.5%，没有重跑官方默认的 50 trials/task
-版本——GPU 跟 Phase 2 共用，不想在开 PPO 微调之前再占几个小时显存，小样本这个差距量级已经能说明
-环境装对了，不需要更大样本去证明。下一步：Phase 2，PPO 强化学习微调（LoRA-SFT checkpoint 基础上
-加 value head）。
+Phase 1 完成，定案数字是 12 trials/task（n=120）跑出的 82.5%。Phase 2 开工前调研发现最初方案里
+"PPO+value head"在单卡 3090 上没有先例支持（value head 实测要 44.4GB），已经改成 GRPO（critic-free），
+`PROJECT_PLAN.md` 相应部分已修正。下一步：设计 Phase 2 GRPO 训练循环的具体实现（plan mode 阶段）。
 
 ## 重开 Pod / 新会话恢复工作的步骤（重要）
 
@@ -77,3 +76,27 @@ OpenVLA/LIBERO/微调/PPO/LoRA这几个JD关键词，改成了现在这个"LoRA�
 
 **下一步**：Phase 2，PPO 强化学习微调——在这次跑通的 LoRA-SFT checkpoint 基础上冻结主干、加
 value head，做 LoRA-SFT vs LoRA-SFT+PPO 的成功率对比和机制分析。
+
+### Phase 2 开工前调研 - PPO 改 GRPO，TGRPO/RL4VLA 引用有问题，已修正 PROJECT_PLAN.md
+
+开工前先核实了一遍最初方案里"参考 TGRPO/RL4VLA"这句话，发现有问题，跟当初排除 WholebodyVLA 是
+同一类错误（核实之前先当真了），只是这次是"部分不适用"不是"完全不存在"：
+- TGRPO（arXiv:2506.08440）论文是真的，但没有公开代码，搜了几轮确认，中途还有一次 agent 差点引用了
+  一个幻觉出来的仓库链接，核实后发现是 404，排除掉了。
+- RL4VLA 代码是真的（`gen-robot/RL4VLA`），但跑的是 ManiSkill3/SimplerEnv，不是 LIBERO——最初方案
+  把它算进"LIBERO 上真实在做的研究线"是不准确的。
+- 真正在 OpenVLA+LIBERO 上跑通、能抄代码的是 RLinf-VLA（`RLinf/RLinf`）和 SimpleVLA-RL
+  （`PRIME-RL/SimpleVLA-RL`），但两者默认都是多卡 A800/H100，不是单卡配置。
+
+同时发现显存预算这条更关键：RL4VLA 实测 value head（哪怕跟主干共享参数）要吃 44.4GB，超过 3090 的
+24GB，业内没有单卡 24GB 跑通 PPO+value head 版本 OpenVLA+LIBERO 的先例。而 RLinf-VLA/SimpleVLA-RL/
+TGRPO 这些真正跑通的项目主流用的都是 GRPO（critic-free，不需要 value head，靠组内 reward 归一化算
+advantage）。TGRPO 论文的消融还显示：同一个强 SFT 基线上朴素 PPO 只涨 0.2 个点，GRPO 类方法涨
+4-8 个点——换算法不只是为了显存，预期收益也更合理。
+
+决定：Phase 2 算法从 PPO 改成 GRPO，reward 用业内主流的稀疏 binary reward（不自己写 dense reward，
+没有先例验证过效果，风险和工作量不划算）。已经把 `PROJECT_PLAN.md` 里 Phase 2/3/时间预算/背景与动机
+里所有 PPO 相关表述改成 GRPO，并把 TGRPO/RL4VLA 的引用改成准确的描述。
+
+**下一步**：设计 Phase 2 具体实现方案（GRPO 训练循环怎么写、reward wrapper、跟 Phase 1 LoRA-SFT
+checkpoint 怎么接），进 plan mode 跟自己过一遍再动手。

@@ -9,9 +9,25 @@
 `quadruped-wbc-mpc` 证明了工程能力和"架构级对比诊断、不满足于跑通"的研究风格，但完全不涉及视觉/语言，
 覆盖不了"多模态具身智能"岗位最看重的技能点。这个项目要补的就是这个缺口。
 
-核心技术路径（OpenVLA + LIBERO + LoRA 微调 + PPO 强化学习微调）参考了 2025-2026 一条真实在做的研究线
-（TGRPO、RL4VLA/RLinf、πRL 等工作：冻结 VLA 主干、LoRA 适配器 + PPO，在 LIBERO 上做 RL 微调），不是
-凭空拼关键词。诊断维度上，语言接地测试参考 **LIBERO-Plus**（VLA 模型鲁棒性分析基准）的思路；动态场景
+核心技术路径（OpenVLA + LIBERO + LoRA 微调 + GRPO 强化学习微调）参考了 2025-2026 一条真实在做的研究线
+——冻结 VLA 主干、LoRA 适配器 + 强化学习，在 LIBERO 上做 RL 微调，不是凭空拼关键词，但这条研究线里
+哪些是"能抄代码的"、哪些只是"论文级参考"，Phase 2 开工前核实过一轮，跟最初设想有出入，如实记录：
+- **TGRPO**（arXiv:2506.08440）：论文真实，但**没有公开代码**，搜了多轮确认（其中一次 agent 差点
+  引用了一个幻觉出来的仓库链接，核实后是 404，已排除）——只能当算法思路参考，不是能 fork 的代码基础。
+- **RL4VLA**（`gen-robot/RL4VLA`）：代码真实能跑，但**跑的是 ManiSkill3/SimplerEnv，不是 LIBERO**，
+  最初方案把它归为"LIBERO 上真实在做的研究线"是不准确的。
+- 真正在 OpenVLA + LIBERO 上跑通、有代码可参考的是 **RLinf-VLA**（`RLinf/RLinf`，原生支持 OpenVLA-OFT
+  + LIBERO + PPO/GRPO，有分任务套件的公开 checkpoint）和 **SimpleVLA-RL**（`PRIME-RL/SimpleVLA-RL`，
+  有现成的 `run_openvla_oft_rl_libero.sh`，基于 verl，用 GRPO）——但两者默认配置都是多卡
+  A800/H100，不是单卡 3090，照搬需要自己做降配工作。
+- 算法从 PPO 改成了 **GRPO**：核实下来，RL4VLA 实测显示光是 value head（即使跟主干共享参数）就要吃
+  **44.4GB** 显存，已经超过 3090 的 24GB，业内目前没有任何单卡 24GB 跑通 OpenVLA+LIBERO+PPO(带
+  value head) 的先例；而 RLinf-VLA/SimpleVLA-RL/TGRPO 这些真正在 LIBERO 上跑通的项目主流用的都是
+  **GRPO（critic-free，组内 reward 归一化算 advantage，不需要 value head）**，显存需求低得多，更可能
+  在 3090 上跑通。TGRPO 论文里的消融实验也显示：同一个强 SFT 基线上朴素 PPO 只涨 0.2 个点，GRPO类
+  方法涨 4-8 个点——换算法不只是为了显存，收益预期也更合理。详见 PROGRESS.md 这一步的调研记录。
+
+诊断维度上，语言接地测试参考 **LIBERO-Plus**（VLA 模型鲁棒性分析基准）的思路；动态场景
 鲁棒性这个维度的动机来自 **AHEAD**（"Intercepting the Future"，arXiv 2606.02486）——这篇论文实测反应式
 VLA 在动态场景（物体运动/传送带/抛接）下成功率会从静态场景大幅衰减（论文里最强反应式baseline在动态
 场景下只有 31-58%，加预测模块能到 79-97%），说明"VLA 是反应式系统、假设世界在观测和执行之间静止"这个
@@ -30,19 +46,24 @@ VLA 在动态场景（物体运动/传送带/抛接）下成功率会从静态�
   "复现的真实数字"，不是"看起来能跑"。
 - 交付物：能跑通的 LoRA 微调 + 推理脚本，复现的基线成功率。
 
-## Phase 2：PPO 强化学习微调（核心，预计 1-1.5 周）
+## Phase 2：GRPO 强化学习微调（核心，预计 1-1.5 周）
 
-- 在 Phase 1 的 LoRA 微调 checkpoint 基础上，冻结 VLA 主干，加一个value head，用 PPO 做进一步的RL微调
-  （参考 TGRPO/RL4VLA 的做法：LIBERO 的仿真状态可以直接构造 dense reward，不需要额外的reward model）。
-- 核心对比：**纯模仿学习（LoRA-SFT）vs 模仿学习+RL微调（LoRA-SFT+PPO）** 在 LIBERO 成功率上的差异。
+- 在 Phase 1 的 LoRA 微调 checkpoint 基础上，冻结 VLA 主干，用 **GRPO**（critic-free，不需要 value
+  head）做进一步的 RL 微调——参考 RLinf-VLA/SimpleVLA-RL 的架构（组内采样多条 rollout，reward 归一化
+  算 advantage），reward 用业内主流的**稀疏 binary reward**（成功=1，其余=0，LIBERO 原生就支持，不
+  自己写 dense reward——业内所有真实项目都是这么做的，没人在 LIBERO 上验证过 BDDL predicate 那种
+  dense shaping 的效果，自己发明一个没有先例的 reward 设计风险和工作量都不划算）。
+- 核心对比：**纯模仿学习（LoRA-SFT）vs 模仿学习+RL微调（LoRA-SFT+GRPO）** 在 LIBERO 成功率上的差异。
+  预期管理：TGRPO 论文的消融显示同类方法在强 SFT 基线上大概能涨几个点（不是量级上的提升），涨幅不大
+  不代表复现失败。
 - 不满足于"成功率涨了"这个表面结论，做机制层面分析：RL微调后动作分布的变化（熵是否下降、是否在往
   某几类"讨巧"动作收敛）、失败模式是否发生了系统性转移（比如RL policy是不是在某些任务上用了跟SFT
   完全不同的抓取策略）。
-- 交付物：LoRA-SFT vs LoRA-SFT+PPO 的成功率对比表 + 机制分析（不是只有一个数字对比）。
+- 交付物：LoRA-SFT vs LoRA-SFT+GRPO 的成功率对比表 + 机制分析（不是只有一个数字对比）。
 
 ## Phase 3：诊断评测——语言接地 + 动态鲁棒性双轴（核心，预计 1 周）
 
-对 Phase 2 产出的两个策略（SFT-only / SFT+PPO）**都**跑以下两组诊断，不是只测最终策略：
+对 Phase 2 产出的两个策略（SFT-only / SFT+GRPO）**都**跑以下两组诊断，不是只测最终策略：
 
 **轴一：语言接地**（参考 LIBERO-Plus 思路）：固定视觉场景，只换指令里的目标物体，量化"指令敏感度"=
 换指令后动作目标正确切换的比例，而不是报一个笼统的鲁棒性分数。核心问题：**RL微调是让语言接地变好了，
@@ -51,7 +72,7 @@ VLA 在动态场景（物体运动/传送带/抛接）下成功率会从静态�
 **轴二：动态场景鲁棒性**（参考 AHEAD 的问题定义，不做它的解法）：在 LIBERO 场景里让目标物体以可控速度
 运动（比如物体释放后自由落体、或简单的水平匀速移动——具体实现方式视 LIBERO 场景改造的工作量，Phase 3
 开工时先勘探可行性，做不到再降级到"物体位置在episode中途扰动"这种更简单的动态代理指标，如实记录降级
-原因）。测成功率随物体速度增加的衰减曲线，SFT-only vs SFT+PPO 对比。
+原因）。测成功率随物体速度增加的衰减曲线，SFT-only vs SFT+GRPO 对比。
 
 延续 `quadruped-wbc-mpc` 的"诚实反例"风格：如果RL微调在某个维度上反而更差（比如更依赖视觉捷径、
 或者动态场景下衰减更快），如实报告并分析原因，不是只挑好看的结果讲。
@@ -65,8 +86,9 @@ VLA 在动态场景（物体运动/传送带/抛接）下成功率会从静态�
 ## 时间/成本预算
 
 - 全程单卡 24GB 显存量级：OpenVLA-7B 推理 bf16 ~15GB，LoRA 微调（基座冻结，只训练adapter）显存增量
-  可控；PPO 阶段额外的 value head 和 rollout 数据也在可控范围。全程**不做全量微调**（7B模型全量微调
-  单卡装不下，见项目决策记录）。
+  可控；Phase 2 改用 GRPO（无 value head）就是为了让 RL 微调阶段的显存增量也保持可控——这是核实过
+  没有先例支持"PPO+value head 单卡24GB可行"之后的调整，不是随口写的预算，具体数字见 Phase 2 小节。
+  全程**不做全量微调**（7B模型全量微调单卡装不下，见项目决策记录）。
 - 跟 `quadruped-wbc-mpc` 共用同一个 pod（已清理 Isaac Lab 相关缓存，磁盘从 28GB 恢复到 58GB 可用），
   不需要单独开新机器。
 
@@ -86,3 +108,9 @@ VLA 在动态场景（物体运动/传送带/抛接）下成功率会从静态�
 - **[已决策] 项目定位**：这是两个简历项目里的第二个，跟 `quadruped-wbc-mpc` 分别投不同方向岗位，
   两个都是重心。核心方法论一致："不满足于跑通，做架构/训练方式级别的对比诊断，如实报告负结果"——
   quadruped 项目在控制层做（分层QP vs单层QP），这个项目在决策层做（SFT vs SFT+RL）。
+- **[已决策] Phase 2 用 GRPO 还是 PPO？—— 改用 GRPO。** Phase 2 开工前核实了 TGRPO/RL4VLA 这两个最初
+  方案里当作"参考"的项目：TGRPO 没有公开代码，RL4VLA 代码真实但跑的是 ManiSkill3/SimplerEnv 不是
+  LIBERO。同时发现 RL4VLA 实测 value head 即使共享主干也要 44.4GB 显存，超过 3090 的 24GB，业内没有
+  单卡 24GB 跑通 PPO+value head 版本 OpenVLA+LIBERO 的先例；而真正在 OpenVLA+LIBERO 上跑通的项目
+  （RLinf-VLA、SimpleVLA-RL）主流用的是 GRPO（critic-free），显存需求低得多。换算法是为了在 3090
+  上有实际跑通的可能性，不是喜好问题。详见 PROGRESS.md 对应记录。
