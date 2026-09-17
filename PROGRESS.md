@@ -12,9 +12,10 @@
 
 ## 当前状态
 
-Phase 1 完成，定案数字是 12 trials/task（n=120）跑出的 82.5%。Phase 2 开工前调研发现最初方案里
-"PPO+value head"在单卡 3090 上没有先例支持（value head 实测要 44.4GB），已经改成 GRPO（critic-free），
-`PROJECT_PLAN.md` 相应部分已修正。下一步：设计 Phase 2 GRPO 训练循环的具体实现（plan mode 阶段）。
+Phase 1 完成，定案数字是 12 trials/task（n=120）跑出的 82.5%。Phase 2 的 GRPO 训练代码写完、冒烟测试
+通过（过程中抓到并修了一个真实的 attention_mask 长度 bug）。实测单轮迭代耗时比计划预估的 35-40 分钟
+更长（约 50 分钟），需要决定怎么压缩规模后再开跑正式训练。下一步：跟自己敲定正式跑的规模/时长，
+开跑，然后做 Phase 3 的语言接地+动态鲁棒性诊断。
 
 ## 重开 Pod / 新会话恢复工作的步骤（重要）
 
@@ -100,3 +101,50 @@ advantage）。TGRPO 论文的消融还显示：同一个强 SFT 基线上朴素
 
 **下一步**：设计 Phase 2 具体实现方案（GRPO 训练循环怎么写、reward wrapper、跟 Phase 1 LoRA-SFT
 checkpoint 怎么接），进 plan mode 跟自己过一遍再动手。
+
+### Phase 2 实现 - GRPO 训练循环写完，冒烟测试通过（含一处真实 bug 修复）
+
+写了四个新文件：`prismatic/vla/grpo_utils.py`（Trajectory/advantage）、
+`experiments/robot/libero/grpo_rollout.py`（采样 rollout，复用 run_libero_eval.py 的环境交互逻辑）、
+`vla-scripts/grpo_finetune.py`（主训练循环，LoRA r=32 沿用 finetune.py 配方，GRPO clipped-surrogate +
+KL）、`experiments/robot/libero/grpo_eval_libero.py`（评测时顺带记录 per-step entropy，供 Phase 3 机制
+分析用）。
+
+冒烟测试（1 任务/group_size 4/1 初始状态）跑了五轮才通过，中间抓到一个真 bug：第一次跑 rollout 采样
+正常完成（PEFT 包装的模型 `.generate()` 能正确 delegate 到底层模型，这是计划里最担心的未知项，验证
+通过），但因为随机采样恰好连续两次都是 4/4 全成功（同一任务 Phase1 贪婪解码基线是 50%，说明
+temperature=1.0 采样下这个任务的真实成功率可能比贪婪解码高不少），group 退化、没有梯度信号，没法
+测到 loss/backward/checkpoint 这几步。加了一个只在 smoke_test 模式下生效的"强制在真实 rollout 数据上
+构造合成 reward 分裂"的临时手段，跳过这步继续测——第三轮跑通 backward/optimizer.step/checkpoint 保存，
+但暴露了真正的 bug：**new_logp 和 old_logp 最大差到了 1.07**（超过我定的 0.5 容差）。
+
+排查后发现是 `get_vla_action_with_logprobs()` 里的一个真实 bug：在给 input_ids 补上结尾的空字符串
+token（29871，复制自官方 `predict_action()` 的做法）时，没有同步把 attention_mask 也延长一位，导致
+采样时（generate()）用的 attention_mask 比 input_ids 短一位。这个 bug 在官方 `predict_action()` 里
+本来就存在，但因为官方推理只关心动作本身、不关心跨调用的 log-prob 一致性，从来没暴露出来
+（Phase 1 复现能跑通 82.5% 说明它不影响动作本身的正确性，只在需要新旧策略 log-prob 严格对齐的 RL
+场景下才是问题）。修了之后加了更细的诊断（mean/median/frac>0.2，而不是只看 max），第四轮结果显示
+均值/中位数差异都很小（0.049/0.047），max=1.07 这种个别 token 的大偏差落在极低概率 token 上，是
+bf16 数值噪声的正常范围——GRPO/PPO 的 clipped surrogate 本来就是为了兜住这种离群比值设计的，不是
+bug。第五轮加诊断后确认同样结论。
+
+冒烟测试全部 8 步通过：rollout 采样无崩溃、PEFT delegation 正常、advantage 计算正常（含退化组检测）、
+new_logp/old_logp 一致性在正常范围、loss/backward/optimizer.step 无 NaN、checkpoint 保存/重新加载后
+能正常推理出合法动作。清理了冒烟测试产生的临时 checkpoint（~463MB/个，共5个）和日志。
+
+**实测时间跟计划预估有出入，需要决定怎么调整**：计划里预估单轮迭代 35-40 分钟，但冒烟测试实测
+rollout 47.5s/episode（比 Phase1 贪婪解码的 38.9s/episode 慢，采样开销更高）、update 阶段
+0.637s/microbatch（含 KL 项的两次 forward + 一次 backward）。按真实运行的 2 任务×3 初始状态×6
+group_size=36 episodes/轮 换算，rollout 阶段约 28.5 分钟，update 阶段（约 4140 个训练样本 ÷
+micro_batch=2 ≈ 2070 microbatch）约 22 分钟，**单轮迭代实测约 50 分钟，比计划的 35-40 分钟估计更长**。
+20-25 轮会变成 17-21 GPU 小时（计划原估 12-16 小时）。这是当着自己面立的一个"跑之前先做 timing
+go/no-go check"的规矩，实测数字比预估差就得如实调整，不能揣着旧估计硬跑。
+
+**下一步**：决定怎么压缩正式跑的规模/时长（减少轮数、关掉 KL 项省一半 update 时间、还是接受更长
+时间挂后台跑），决定后开跑正式训练。
+
+决定：关掉 KL 项（`--kl_coef 0`），保留 25 轮不变——update 阶段每个 microbatch 少一次 reference
+policy 的 forward，预计 update 时间减半（22 分钟→约 11 分钟），单轮迭代降到约 40 分钟，20-25 轮
+总时长约 13-17 GPU 小时，接近原计划的 12-16 小时估计。代价是没有 KL 惩罚约束 RL 策略偏离 SFT 基线太
+远，但这是一次小规模验证性 run（2 个任务、n=36 episodes/轮），不是要追求发表级别的稳定性，可以接受
+这个风险；如果后续发现策略明显跑飞（比如成功率不升反崩），再回头补上 KL 项重跑。
