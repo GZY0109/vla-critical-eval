@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.ipynb_checkpoints/
+*.log
+.DS_Store
+checkpoints/
+*.safetensors
+*.pt
+*.ckpt
+results/*.mp4
+results/*.npz
+huggingface_cache/
