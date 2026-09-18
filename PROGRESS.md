@@ -12,10 +12,37 @@
 
 ## 当前状态
 
-Phase 1 完成，定案数字是 12 trials/task（n=120）跑出的 82.5%。Phase 2 的 GRPO 训练代码写完、冒烟测试
-通过（过程中抓到并修了一个真实的 attention_mask 长度 bug）。实测单轮迭代耗时比计划预估的 35-40 分钟
-更长（约 50 分钟），需要决定怎么压缩规模后再开跑正式训练。下一步：跟自己敲定正式跑的规模/时长，
-开跑，然后做 Phase 3 的语言接地+动态鲁棒性诊断。
+Phase 1 完成，定案数字是 12 trials/task（n=120）跑出的 82.5%。Phase 2：GRPO 正式训练（`real_run_v1`，
+`--kl_coef 0`）已经跑完，25 轮（iteration 0-24），最终 checkpoint 在
+`openvla/runs/grpo/grpo+openvla-7b-finetuned-libero-spatial+lora-r32+lr-1e-05--real_run_v1--2026_09_17-15_03_41/adapter_latest`。
+
+为了做 SFT vs SFT+GRPO 的机制分析（不只是成功率数字，还要看熵/置信度），写了新评测脚本
+`openvla/experiments/robot/libero/grpo_eval_libero.py`（在 Phase 1 那次纯文本 log 基础上加了
+per-step entropy/top1-margin/action-token-id 的结构化 JSONL 记录，Phase 1 的 log 没留 logits，没法
+回溯补熵，所以两个策略都要用这个新脚本重新跑一遍 n=120，评测方法论跟 Phase 1 一致，82.5% 这个基线
+数字本身不受影响）。截至目前：
+
+- ✅ SFT baseline recheck：`GRPOEVAL-libero_spatial-2026_09_18-12_29_00--sft_baseline_recheck`，
+  2026-09-18 12:29-13:47（78 分钟），n=120，成功率 82.5%（99/120），与 Phase 1 一致，熵数据完整。
+- 🔄 SFT+GRPO checkpoint 评测**正在跑**：`GRPOEVAL-libero_spatial-2026_09_18-14_42_40--grpo_real_run_v1_checkpoint`，
+  2026-09-18 14:42:40 启动，预计 70-80 分钟（~15:55-16:00 结束）。启动命令（用
+  `/workspace/vla-critical-eval/.venv/bin/python`，系统 python 没装 draccus）：
+  ```
+  python experiments/robot/libero/grpo_eval_libero.py \
+    --pretrained_checkpoint openvla/openvla-7b-finetuned-libero-spatial \
+    --adapter_path "runs/grpo/grpo+openvla-7b-finetuned-libero-spatial+lora-r32+lr-1e-05--real_run_v1--2026_09_17-15_03_41/adapter_latest" \
+    --task_suite_name libero_spatial --center_crop True --num_trials_per_task 12 \
+    --run_id_note grpo_real_run_v1_checkpoint
+  ```
+  新会话如果接手时这个还没跑完，先看 GPU 是否还占着（`nvidia-smi`）、再看
+  `openvla/experiments/logs/GRPOEVAL-libero_spatial-2026_09_18-14_42_40--grpo_real_run_v1_checkpoint.jsonl`
+  行数是否到 120，txt log 里 "Final success rate" 是否已打印。
+- ◻ 机制分析：两组 n=120 都跑完后，做成功率对比 + 熵/失败模式分析，完成 Phase 2 交付物。
+
+下一步：GRPO checkpoint 评测跑完 → 机制分析 → 进 Phase 3（语言接地 + 动态鲁棒性双轴诊断）。Phase 3
+的两块开工前探索已经做完（可行性已验证，不用重新勘探），见下面两条"Phase 3 开工前探索"记录：动态
+场景优先做"持续水平匀速运动"，语言接地已经量出十组可直接复用的场景配对，但两条诊断轴各自的代理
+指标代码（末端执行器最近邻物体判定 / 速度扰动注入）都还没写，是 Phase 3 正式开工时要做的部分。
 
 ## 重开 Pod / 新会话恢复工作的步骤（重要）
 
@@ -148,3 +175,69 @@ policy 的 forward，预计 update 时间减半（22 分钟→约 11 分钟）�
 总时长约 13-17 GPU 小时，接近原计划的 12-16 小时估计。代价是没有 KL 惩罚约束 RL 策略偏离 SFT 基线太
 远，但这是一次小规模验证性 run（2 个任务、n=36 episodes/轮），不是要追求发表级别的稳定性，可以接受
 这个风险；如果后续发现策略明显跑飞（比如成功率不升反崩），再回头补上 KL 项重跑。
+
+正式训练（`--kl_coef 0 --run_id_note real_run_v1`）已经开跑，跑着的时候先做 Phase 3 并行准备，
+见下一条记录。
+
+### Phase 3 开工前探索 - 动态场景扰动的物理可行性验证，顺带发现一个跟评测 harness 相关的设计坑
+
+GRPO 正式训练占着 GPU（20987/24576 MiB，100% 利用率），趁它跑的时候先探索 Phase 3"动态场景鲁棒性"
+这个诊断轴的可行性——PROJECT_PLAN 里这部分本来就标了"待 Phase 3 开工时先勘探，做不到再降级"。写了个
+探测脚本 `openvla/experiments/robot/libero/probe_dynamic_object.py`，不加载 OpenVLA、只用 LIBERO/
+robosuite 环境本身，不占 GPU 显存，跟训练进程并行跑没有冲突。
+
+验证了三件事：
+- LIBERO 物体都是 `free` 关节（6-dof，平移+旋转），可以直接用
+  `env.sim.data.set_joint_qpos/set_joint_qvel(joint_name, ...)` 改位置/速度，`env.step()` 的控制
+  循环不会重置非驱动关节的速度——机制上是通的。
+- 自由落体：抬高物体 15cm、清零速度、松手，物理引擎正常让它在约 5 步（~0.25s）内落地并稳定，符合
+  预期。
+- 水平匀速运动：单次注入速度后位移只有 0.0046m 就停了——一开始以为是代码把速度覆盖掉了，实际排查
+  后发现是真实物理摩擦力的作用（碗贴着桌面，横向速度被摩擦很快吃掉），不是 bug。改成每个 env.step
+  前都重新注入速度（模拟传送带持续给力），20 步后位移变成 0.0297m、单调递增——这个方案可行，但要
+  持续注入而不是松手一次。
+
+**关键发现（会改变 Phase 3 设计，不是单纯的物理验证）**：`run_libero_eval.py:72` 里官方评测 harness
+本来就有 `num_steps_wait=10`——LIBERO 的标准初始化本身就是把物体从空中扔下摔到桌上，然后刻意等 10 步
+摔稳了才让策略开始动作。这意味着"episode 开头让物体自由落体"这个最直觉的方案，其实跟 LIBERO 默认行为
+是同一件事，根本不是新扰动，评测脚本已经把它规避掉了。要让自由落体成为一个真正的动态鲁棒性测试，
+必须做以下两选一：缩短/取消 `num_steps_wait`，强迫策略在物体还没摔稳时就开始观测和动作；或者把落体
+触发时机挪到 episode 中途（机器人已经朝原目标位置伸手之后），测试策略能不能在动作执行到一半时根据
+新观测修正目标。
+
+另外确认了 `run_libero_eval.py:186-228` 这条评测循环是逐步重新查询 VLA（不是动作分块/chunking），
+每个 sim step 都会用当前观测重新预测动作，这意味着单次、短暂（~0.25s）的扰动很可能被策略自己的逐帧
+闭环重新观测"吸收掉"，除非扰动发生在策略已经做出不可逆承诺（比如夹爪刚合上）的关键时刻——这也是
+水平匀速运动（持续性扰动，不会被单帧重新观测轻易纠正）可能比自由落体更可靠地测出"动态场景下策略是否
+退化"这个问题的原因。
+
+**下一步**：Phase 3 正式开工时，动态场景诊断优先做"持续水平匀速运动"（机制已验证可行、噪声小），
+自由落体版本如果要做，需要配合缩短 `num_steps_wait` 或挪到 episode 中途触发，不能直接沿用默认初始化
+流程。物理/API 层面两个方案都不需要降级到"位置中途瞬移"这种更简化的代理指标。
+
+### Phase 3 开工前探索 - 语言接地反事实测试的场景配对，libero_spatial 十个任务共用一组槽位坐标
+
+继续趁 GRPO 训练占着 GPU 的空档，探索 Phase 3 语言接地诊断轴（固定场景、只换指令、测目标物体是否
+正确切换）的具体实现方式。写了探测脚本把 `libero_spatial` 十个任务的初始状态都摆稳后，量出两个黑碗
+相对各参照物（盘子/ramekin/饼干盒/木柜/炉子）的真实坐标，逐个任务比对。
+
+发现：这十个任务其实共用同一小组"槽位坐标"——两个碗永远落在这同一组固定位置的某几个组合上，十个
+任务只是把"语言描述哪个位置是目标"这件事换了，不是每个任务都单独设计了新场景。这意味着能找到大量
+"任务 A 里没被选中的陪衬碗，位置和任务 B 的目标碗位置几乎重合（<3cm，在抓取容差内）"的组合，不用碰
+BDDL、不用造新场景，直接复用某个任务的 init_state、把指令文本换成另一个任务的语言，就能做反事实测试。
+量出来最干净的几组（碗位置误差 < 1cm）：
+- task 6 场景（陪衬碗）+ task 7 指令"on the stove"（误差 0.4cm）
+- task 0 场景（陪衬碗）+ task 1 指令"next to the ramekin"（误差 0.8cm）
+- task 3 场景（陪衬碗）+ task 4 指令"in the top drawer of the wooden cabinet"（误差 0.8cm）
+还有其他几组误差在 1-3cm 区间，十个任务两两之间能拼出十几对可用组合（脚本输出的完整清单见本次
+探索过程，没有专门存文件，需要时重新跑一下 <3cm 阈值的匹配脚本即可复现）。
+
+这里有个关键设计点：不能用环境内置的成功判定来衡量这个测试，因为那是绑死在原任务 BDDL 目标物体上的
+（换了指令后，"正确"的目标物体变了，但 env 的 done/success 信号还是照原任务的物体判定）。需要单独写一
+个代理指标——比如看末端执行器最早接近/接触的是哪个碗，或者比较到两个碗的最小距离曲线——来判断策略
+动作瞄准的是指令里新指定的那个碗还是原任务训练时的那个，这个代理指标还没写，是 Phase 3 正式开工时
+要做的部分。
+
+**下一步**：Phase 3 正式开工时，用这批场景配对组装语言接地反事实测试集，同时实现"动作目标碗判定"的
+代理指标（末端执行器最近邻物体或轨迹朝向）。跟动态场景那条一样，物理/数据层面已经验证可行，不需要
+造新场景或降级方案。
