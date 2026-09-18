@@ -39,10 +39,52 @@ per-step entropy/top1-margin/action-token-id 的结构化 JSONL 记录，Phase 1
     没有产生可测量的净收益，但也没有跑飞退化——是一次方法验证性质的运行，不是收敛到更优策略的运行。
     Phase 2 交付物到此完成，不用再追加训练轮数或调参重跑（不是这个阶段的目标）。
 
-Phase 2 全部完成，进入 Phase 3（语言接地 + 动态鲁棒性双轴诊断）。Phase 3 的两块开工前探索已经做完
-（可行性已验证，不用重新勘探），见下面两条"Phase 3 开工前探索"记录：动态场景优先做"持续水平匀速
-运动"，语言接地已经量出十组可直接复用的场景配对。下一步：实现两条诊断轴各自的代理指标代码（末端
-执行器最近邻物体判定 / 速度扰动注入），这是 Phase 3 正式开工要做的第一件事。
+Phase 3（语言接地 + 动态鲁棒性双轴诊断）首轮实现和评测已经跑完，两个策略（SFT-only / SFT+GRPO）
+在两条轴上都有数据了：
+
+**轴二：动态场景鲁棒性**（`openvla/experiments/robot/libero/dynamic_perturb_eval.py`，前 30 步持续
+给场景里所有可动黑碗注入水平速度、之后停止让摩擦力自然停下，避免物体被扰动直接推进容器；v=0 复用
+Phase 2 的 n=120 baseline）：
+
+| policy | v=0（复用Phase2） | v=0.05 | v=0.1 | v=0.2 |
+|---|---|---|---|---|
+| SFT-only | 82.5% (99/120) | 74.0% (37/50) | 82.0% (41/50) | 60.0% (30/50) |
+| SFT+GRPO | 82.5% (99/120) | 84.0% (42/50) | 78.0% (39/50) | 64.0% (32/50) |
+
+（`DYNPERTURB-libero_spatial-2026_09_18-17_10_34--sft_dynamic_perturb` /
+`DYNPERTURB-libero_spatial-2026_09_18-19_00_17--grpo_dynamic_perturb`，各 n=150，3 档速度×10
+task×5 trials）两条曲线都不是单调衰减（v=0.1 比 v=0.05 还高，噪声很大——n=5/task/档 本来就小），
+v=0.2 时两个策略都明显跌破静态基线（60%/64% vs 82.5%），说明动态扰动确实会伤成功率，但两个策略在
+同一档位上的差异（比如 v=0.05 时 74% vs 84%）都在 n=50 的噪声范围内（±1 条约等于 ±2 个百分点，
+10 个点的差距边界情况，不构成能下"GRPO更/更不鲁棒"结论的强信号）——如实记录：这一版首轮规模看不出
+两个策略在动态鲁棒性上有系统性差异。
+
+**轴一：语言接地反事实测试**（`openvla/experiments/robot/libero/probe_language_pairs.py` 枚举场景/
+指令配对，`language_grounding_eval.py` 用末端执行器到两个碗的最小距离判定策略瞄准哪个碗）：libero_spatial
+十个任务的 BDDL 核实过目标结构完全一致——goal 永远是 `(On akita_black_bowl_1 plate_1)`，语言换的只是
+"目标碗在哪个位置"，陪衬碗永远是 `akita_black_bowl_2`。枚举全部 10×50 个 init_state 找到 10 组
+陪衬碗位置和另一任务目标碗典型位置重合 <0.15cm 的干净配对（`language_grounding_pairs.json`）。
+
+- SFT-only：`LANGGROUND-libero_spatial-2026_09_18-21_33_02--sft_language_grounding`，
+  proxy accuracy 70%（7/10）。
+- SFT+GRPO：`LANGGROUND-libero_spatial-2026_09_18-21_44_31--grpo_language_grounding`，
+  proxy accuracy 70%（7/10）。
+- **关键发现**：两个策略不仅总分相同，**逐条配对的对错模式完全一致**——都在 (scene=task8,
+  instr=task1)、(scene=task0, instr=task1)、(scene=task4, instr=task9) 这三条上判定成"瞄准了
+  scene 原本的目标碗"（错），其余 7 条一致判定"瞄准了陪衬碗/新指令目标"（对）。另外两个策略在全部
+  20 条 episode 里 `native_env_success` 都是 False（没有一次完整复现 scene 原任务的成功抓放），
+  排除了"策略压根没理会新指令、纯粹靠肌肉记忆把原任务走完"这种最坏情况。逐条一致这件事本身就是
+  强信号：这次 GRPO 微调没有改变策略在场景切换/指令切换下"瞄准哪个物体"这个决策——无论是往好的
+  方向（语言接地变强）还是坏的方向（更依赖视觉捷径），至少在这批配对上，RL 微调完全没有触及这个
+  决策机制。
+
+**Phase 3 首轮结论**：跟 Phase 2 的机制分析结论一致——这次 `kl_coef=0`、2 任务、36 episodes/轮、
+25 轮的验证性 GRPO run，在成功率、动态鲁棒性、语言接地三个维度上都没有产生可测量的系统性差异（唯一
+的例外是 Phase 2 机制分析发现的"18 条 episode 发生翻转但净效应为零"这种非零但抵消的漂移）。如实记录：
+这不是"RL微调让VLA变得更好或更差"的故事，是"这个规模/配置的 GRPO 微调没有改变策略的决策边界"的故事
+——诚实反映了小规模验证性 RL run 的真实局限（对比 Phase 1 计划里提到的 TGRPO 消融，同类方法通常涨
+4-8 个点，是在更大规模训练预算下取得的，这次的训练量级本来就没有对标那个规模）。Phase 3 首轮交付物
+到此完成。是否要加大训练规模重跑 GRPO 来看这个结论是否稳健，留给 Phase 4 收尾时再判断优先级。
 
 ## 重开 Pod / 新会话恢复工作的步骤（重要）
 
