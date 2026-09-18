@@ -24,25 +24,25 @@ per-step entropy/top1-margin/action-token-id 的结构化 JSONL 记录，Phase 1
 
 - ✅ SFT baseline recheck：`GRPOEVAL-libero_spatial-2026_09_18-12_29_00--sft_baseline_recheck`，
   2026-09-18 12:29-13:47（78 分钟），n=120，成功率 82.5%（99/120），与 Phase 1 一致，熵数据完整。
-- 🔄 SFT+GRPO checkpoint 评测**正在跑**：`GRPOEVAL-libero_spatial-2026_09_18-14_42_40--grpo_real_run_v1_checkpoint`，
-  2026-09-18 14:42:40 启动，预计 70-80 分钟（~15:55-16:00 结束）。启动命令（用
-  `/workspace/vla-critical-eval/.venv/bin/python`，系统 python 没装 draccus）：
-  ```
-  python experiments/robot/libero/grpo_eval_libero.py \
-    --pretrained_checkpoint openvla/openvla-7b-finetuned-libero-spatial \
-    --adapter_path "runs/grpo/grpo+openvla-7b-finetuned-libero-spatial+lora-r32+lr-1e-05--real_run_v1--2026_09_17-15_03_41/adapter_latest" \
-    --task_suite_name libero_spatial --center_crop True --num_trials_per_task 12 \
-    --run_id_note grpo_real_run_v1_checkpoint
-  ```
-  新会话如果接手时这个还没跑完，先看 GPU 是否还占着（`nvidia-smi`）、再看
-  `openvla/experiments/logs/GRPOEVAL-libero_spatial-2026_09_18-14_42_40--grpo_real_run_v1_checkpoint.jsonl`
-  行数是否到 120，txt log 里 "Final success rate" 是否已打印。
-- ◻ 机制分析：两组 n=120 都跑完后，做成功率对比 + 熵/失败模式分析，完成 Phase 2 交付物。
+- ✅ SFT+GRPO checkpoint 评测：`GRPOEVAL-libero_spatial-2026_09_18-14_42_40--grpo_real_run_v1_checkpoint`，
+  2026-09-18 14:42-16:30（108 分钟），n=120，成功率 82.5%（99/120）——跟 SFT baseline 完全打平。
+- ✅ 机制分析（两组 n=120 按 task_id+init_state_idx 逐条配对比较）：
+  - 总成功率打平（82.5% vs 82.5%），但**不是同一批 episode 在赢**：120 条里 90 条两边都成功、
+    12 条两边都失败，另外 18 条发生翻转——9 条 SFT 成功但 GRPO 失败，9 条 SFT 失败但 GRPO 成功，
+    翻转方向刚好互相抵消。说明 `kl_coef=0` 这次训练让策略发生了实质性漂移，只是漂移对成功率是
+    中性的，不是"什么都没学到"。
+  - 熵几乎不变：SFT 均值 0.3864，GRPO 均值 0.3835（7 维动作 logits 的 per-step 均值再对 episode
+    内 step 取平均）——没有变得更自信也没有变得更发散。平均步数也基本不变（129.2 vs 128.4）。
+  - 分任务成功率有升有降（task 9 从 0.50→0.67，task 6 从 1.00→0.83 等），幅度都在 n=12/task 的
+    噪声范围内（±1 条 episode 就是 ±8.3 个百分点），不构成任何任务上的系统性改善或退化。
+  - 结论：这次 `kl_coef=0`、无 KL 约束、小规模（2 任务、36 episodes/轮、25 轮）验证性 GRPO run
+    没有产生可测量的净收益，但也没有跑飞退化——是一次方法验证性质的运行，不是收敛到更优策略的运行。
+    Phase 2 交付物到此完成，不用再追加训练轮数或调参重跑（不是这个阶段的目标）。
 
-下一步：GRPO checkpoint 评测跑完 → 机制分析 → 进 Phase 3（语言接地 + 动态鲁棒性双轴诊断）。Phase 3
-的两块开工前探索已经做完（可行性已验证，不用重新勘探），见下面两条"Phase 3 开工前探索"记录：动态
-场景优先做"持续水平匀速运动"，语言接地已经量出十组可直接复用的场景配对，但两条诊断轴各自的代理
-指标代码（末端执行器最近邻物体判定 / 速度扰动注入）都还没写，是 Phase 3 正式开工时要做的部分。
+Phase 2 全部完成，进入 Phase 3（语言接地 + 动态鲁棒性双轴诊断）。Phase 3 的两块开工前探索已经做完
+（可行性已验证，不用重新勘探），见下面两条"Phase 3 开工前探索"记录：动态场景优先做"持续水平匀速
+运动"，语言接地已经量出十组可直接复用的场景配对。下一步：实现两条诊断轴各自的代理指标代码（末端
+执行器最近邻物体判定 / 速度扰动注入），这是 Phase 3 正式开工要做的第一件事。
 
 ## 重开 Pod / 新会话恢复工作的步骤（重要）
 
