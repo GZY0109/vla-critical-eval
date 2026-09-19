@@ -1,0 +1,92 @@
+[
+  {
+    "scene_task_id": 1,
+    "scene_init_idx": 5,
+    "instr_task_id": 6,
+    "instr_init_idx": 20,
+    "distance_m": 6.33710364967051e-05,
+    "scene_task_description": "pick up the black bowl next to the ramekin and place it on the plate",
+    "instr_task_description": "pick up the black bowl next to the cookie box and place it on the plate"
+  },
+  {
+    "scene_task_id": 8,
+    "scene_init_idx": 37,
+    "instr_task_id": 1,
+    "instr_init_idx": 48,
+    "distance_m": 0.00015244353216634077,
+    "scene_task_description": "pick up the black bowl next to the plate and place it on the plate",
+    "instr_task_description": "pick up the black bowl next to the ramekin and place it on the plate"
+  },
+  {
+    "scene_task_id": 0,
+    "scene_init_idx": 5,
+    "instr_task_id": 1,
+    "instr_init_idx": 5,
+    "distance_m": 0.0001576429846479922,
+    "scene_task_description": "pick up the black bowl between the plate and the ramekin and place it on the plate",
+    "instr_task_description": "pick up the black bowl next to the ramekin and place it on the plate"
+  },
+  {
+    "scene_task_id": 2,
+    "scene_init_idx": 15,
+    "instr_task_id": 8,
+    "instr_init_idx": 40,
+    "distance_m": 0.00021923817825826177,
+    "scene_task_description": "pick up the black bowl from table center and place it on the plate",
+    "instr_task_description": "pick up the black bowl next to the plate and place it on the plate"
+  },
+  {
+    "scene_task_id": 5,
+    "scene_init_idx": 23,
+    "instr_task_id": 3,
+    "instr_init_idx": 45,
+    "distance_m": 0.000505511425301017,
+    "scene_task_description": "pick up the black bowl on the ramekin and place it on the plate",
+    "instr_task_description": "pick up the black bowl on the cookie box and place it on the plate"
+  },
+  {
+    "scene_task_id": 9,
+    "scene_init_idx": 37,
+    "instr_task_id": 7,
+    "instr_init_idx": 17,
+    "distance_m": 0.0006136557623299357,
+    "scene_task_description": "pick up the black bowl on the wooden cabinet and place it on the plate",
+    "instr_task_description": "pick up the black bowl on the stove and place it on the plate"
+  },
+  {
+    "scene_task_id": 3,
+    "scene_init_idx": 10,
+    "instr_task_id": 9,
+    "instr_init_idx": 48,
+    "distance_m": 0.0006576985535448724,
+    "scene_task_description": "pick up the black bowl on the cookie box and place it on the plate",
+    "instr_task_description": "pick up the black bowl on the wooden cabinet and place it on the plate"
+  },
+  {
+    "scene_task_id": 6,
+    "scene_init_idx": 6,
+    "instr_task_id": 7,
+    "instr_init_idx": 5,
+    "distance_m": 0.0006855630136981789,
+    "scene_task_description": "pick up the black bowl next to the cookie box and place it on the plate",
+    "instr_task_description": "pick up the black bowl on the stove and place it on the plate"
+  },
+  {
+    "scene_task_id": 7,
+    "scene_init_idx": 20,
+    "instr_task_id": 9,
+    "instr_init_idx": 31,
+    "distance_m": 0.0009626883265606786,
+    "scene_task_description": "pick up the black bowl on the stove and place it on the plate",
+    "instr_task_description": "pick up the black bowl on the wooden cabinet and place it on the plate"
+  },
+  {
+    "scene_task_id": 4,
+    "scene_init_idx": 34,
+    "instr_task_id": 9,
+    "instr_init_idx": 11,
+    "distance_m": 0.0013414551441647423,
+    "scene_task_description": "pick up the black bowl in the top drawer of the wooden cabinet and place it on the plate",
+    "instr_task_description": "pick up the black bowl on the wooden cabinet and place it on the plate"
+  }
+]

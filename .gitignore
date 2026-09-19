@@ -28,6 +28,15 @@ openvla/experiments/robot/*
 openvla/experiments/robot/libero/*
 !openvla/experiments/robot/libero/grpo_rollout.py
 !openvla/experiments/robot/libero/grpo_eval_libero.py
+!openvla/experiments/robot/libero/dynamic_perturb_eval.py
+!openvla/experiments/robot/libero/probe_dynamic_object.py
+!openvla/experiments/robot/libero/language_grounding_eval.py
+!openvla/experiments/robot/libero/probe_language_pairs.py
+!openvla/experiments/robot/libero/language_grounding_pairs.json
+!openvla/experiments/robot/libero/calibrate_perturb_velocity.py
+!openvla/experiments/robot/libero/analyze_phase2_grpo.py
+!openvla/experiments/robot/libero/analyze_phase3_dynamic_perturb.py
+!openvla/experiments/robot/libero/analyze_phase3_language_grounding.py
 !openvla/vla-scripts
 openvla/vla-scripts/*
 !openvla/vla-scripts/grpo_finetune.py

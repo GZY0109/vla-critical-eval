@@ -1,0 +1,32 @@
+{
+  "sft": {
+    "label": "SFT-only",
+    "n": 120,
+    "n_success": 99,
+    "success_rate": 0.825,
+    "entropy_mean": 0.3863575134985541,
+    "entropy_median": 0.3895731509229221,
+    "num_steps_mean": 129.18333333333334
+  },
+  "grpo": {
+    "label": "SFT+GRPO",
+    "n": 120,
+    "n_success": 99,
+    "success_rate": 0.825,
+    "entropy_mean": 0.3834714798089367,
+    "entropy_median": 0.37935810113952373,
+    "num_steps_mean": 128.36666666666667
+  },
+  "paired_flip_analysis": {
+    "n_paired": 120,
+    "both_success": 90,
+    "both_fail": 12,
+    "sft_success_grpo_fail": 9,
+    "grpo_success_sft_fail": 9,
+    "n_flipped": 18
+  },
+  "source_logs": {
+    "sft": "GRPOEVAL-libero_spatial-2026_09_18-12_29_00--sft_baseline_recheck.jsonl",
+    "grpo": "GRPOEVAL-libero_spatial-2026_09_18-14_42_40--grpo_real_run_v1_checkpoint.jsonl"
+  }
+}

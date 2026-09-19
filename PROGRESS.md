@@ -86,6 +86,12 @@ v=0.2 时两个策略都明显跌破静态基线（60%/64% vs 82.5%），说明�
 4-8 个点，是在更大规模训练预算下取得的，这次的训练量级本来就没有对标那个规模）。Phase 3 首轮交付物
 到此完成。是否要加大训练规模重跑 GRPO 来看这个结论是否稳健，留给 Phase 4 收尾时再判断优先级。
 
+**Phase 4（收尾）已完成**：用户拍板不重跑更大规模 GRPO，直接按现有数据收尾。把三批原始 jsonl
+脚本化成可复现的 `results/*.json`+`.png`，脚本重新算出的数字跟本文件上面手算的数字逐一核对，
+**完全一致**（82.5%/82.5%、90/12/9/9 flip、熵0.3864/0.3835、74/82/60 vs 84/78/64、70%/70%、
+10/10 配对一致），没有发现偏差。README 的"复现结果摘要"已用这些脚本产出重写，过时的"LoRA+PPO"
+措辞和不准确的目录结构说明也已同步修正。详见下方 Phase 4 记录。
+
 ## 重开 Pod / 新会话恢复工作的步骤（重要）
 
 跟 `quadruped-wbc-mpc` 是同一个 pod，没有独立的持久化存储——apt/pip 依赖在 pod 重启后大概率会丢。
@@ -283,3 +289,43 @@ BDDL、不用造新场景，直接复用某个任务的 init_state、把指令�
 **下一步**：Phase 3 正式开工时，用这批场景配对组装语言接地反事实测试集，同时实现"动作目标碗判定"的
 代理指标（末端执行器最近邻物体或轨迹朝向）。跟动态场景那条一样，物理/数据层面已经验证可行，不需要
 造新场景或降级方案。
+
+### Phase 4 - 收尾：三组分析脚本化，README 补齐，核对数字无偏差
+
+用户拍板：不重跑更大规模 GRPO 来验证"零效应"结论的稳健性，直接按现有数据收尾。
+
+Phase 3 结束时对比表格是当时对着原始 jsonl 手算写进 PROGRESS.md 的，没有留下可复现的脚本产物。这次补了
+三个独立的分析脚本，放进 `openvla/experiments/robot/libero/`（跟评测 harness 同目录，是下游分析工具）：
+
+- `analyze_phase2_grpo.py`：读两个 `GRPOEVAL-*.jsonl`，算成功率、按 `(task_id, init_state_idx)` 配对
+  的 flip 分解、per-step 动作熵、平均步数。
+- `analyze_phase3_dynamic_perturb.py`：读两个 `DYNPERTURB-*.jsonl`（v=0 复用 `GRPOEVAL` 静态基线），
+  按速度分档算成功率。
+- `analyze_phase3_language_grounding.py`：读两个 `LANGGROUND-*.jsonl`，算 proxy accuracy 和逐 pair
+  的策略间一致性。
+
+三个脚本的输出落到新建的 `results/`（`phase2_grpo_vs_sft.{json,png}` /
+`phase3_dynamic_perturb.{json,png}` / `phase3_language_grounding.{json,png}`）。**逐一核对脚本重新
+算出的数字和上面手算记录的数字，完全一致**：82.5%/82.5% 成功率、90/12/9/9 的 flip 分解、熵
+0.3864/0.3835、动态扰动 74/82/60 vs 84/78/64、语言接地 70%/70% 且 10/10 配对判定一致——没有发现任何
+偏差，说明 Phase 2/3 记录里的数字是可信的，不是笔误或选择性报告。
+
+顺带修了 `results/phase3_dynamic_perturb.png` 标题里用中文导致 matplotlib 缺字体字形警告的问题（改成
+英文标题，图能正常渲染，不是功能性 bug 但会在生成时刷屏警告）。
+
+**顺带发现并修复一个真实的可复现性缺口**：`.gitignore` 里 `openvla/experiments/robot/libero/*` 这条
+规则只给 `grpo_rollout.py`/`grpo_eval_libero.py` 开了白名单，Phase 3 新增的
+`dynamic_perturb_eval.py`/`language_grounding_eval.py`/`probe_language_pairs.py`/
+`probe_dynamic_object.py`/`calibrate_perturb_velocity.py`/`language_grounding_pairs.json` 这些自己
+写的代码从来没被加进白名单——也就是说这几个 commit 提交的其实只有 `PROGRESS.md` 的文字记录，产出
+这些真实数字的代码本身从来没进 git，只活在这个 pod 的磁盘上。已经把这批文件（连同这次新增的三个
+`analyze_*.py`）都加进 `.gitignore` 白名单。`libero_utils.py`/`regenerate_libero_dataset.py` 核对过
+是原始 OpenVLA 仓库自带的通用工具文件（docstring 和内容都是通用描述，没有本项目的具体信息），维持不
+跟踪，是有意为之不是遗漏。
+
+更新了 `README.md`："复现结果摘要"从 Phase 1 之前的空占位改成用这三个脚本的真实产出重写；"结构"一节
+从没同步过的 `src/`/`scripts/` 改成实际代码落点（`openvla/` 内的 harness/脚本位置 + `results/`）；
+intro 段落里改算法之后一直没同步的"LoRA+PPO"措辞改成"LoRA+GRPO"；补了几行真实的环境安装摘要。
+
+**下一步**：Phase 1-4 全部完成，项目交付物齐全（复现基线、GRPO 训练+机制分析、双轴诊断、可复现的分析
+脚本+图表、如实反映"零效应"结论的 README）。当前无待决策、无未完成的下一步计划。

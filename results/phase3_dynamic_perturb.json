@@ -1,0 +1,53 @@
+{
+  "sft": {
+    "0.0": {
+      "n": 120,
+      "n_success": 99,
+      "success_rate": 0.825
+    },
+    "0.05": {
+      "n": 50,
+      "n_success": 37,
+      "success_rate": 0.74
+    },
+    "0.1": {
+      "n": 50,
+      "n_success": 41,
+      "success_rate": 0.82
+    },
+    "0.2": {
+      "n": 50,
+      "n_success": 30,
+      "success_rate": 0.6
+    }
+  },
+  "grpo": {
+    "0.0": {
+      "n": 120,
+      "n_success": 99,
+      "success_rate": 0.825
+    },
+    "0.05": {
+      "n": 50,
+      "n_success": 42,
+      "success_rate": 0.84
+    },
+    "0.1": {
+      "n": 50,
+      "n_success": 39,
+      "success_rate": 0.78
+    },
+    "0.2": {
+      "n": 50,
+      "n_success": 32,
+      "success_rate": 0.64
+    }
+  },
+  "note": "v=0.0 复用 Phase2 GRPOEVAL 静态基线 (n=120)，v>0 各档 n=50 (10 task x 5 trial)",
+  "source_logs": {
+    "sft_baseline": "GRPOEVAL-libero_spatial-2026_09_18-12_29_00--sft_baseline_recheck.jsonl",
+    "grpo_baseline": "GRPOEVAL-libero_spatial-2026_09_18-14_42_40--grpo_real_run_v1_checkpoint.jsonl",
+    "sft_perturb": "DYNPERTURB-libero_spatial-2026_09_18-17_10_34--sft_dynamic_perturb.jsonl",
+    "grpo_perturb": "DYNPERTURB-libero_spatial-2026_09_18-19_00_17--grpo_dynamic_perturb.jsonl"
+  }
+}

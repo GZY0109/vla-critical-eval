@@ -1,0 +1,103 @@
+{
+  "sft": {
+    "n": 10,
+    "n_correct": 7,
+    "proxy_accuracy": 0.7,
+    "n_native_env_success": 0
+  },
+  "grpo": {
+    "n": 10,
+    "n_correct": 7,
+    "proxy_accuracy": 0.7,
+    "n_native_env_success": 0
+  },
+  "n_paired": 10,
+  "n_agree": 10,
+  "n_disagree": 0,
+  "per_pair": [
+    {
+      "scene_task_id": 0,
+      "scene_init_idx": 5,
+      "instr_task_id": 1,
+      "sft_proxy_correct": false,
+      "grpo_proxy_correct": false,
+      "agree": true
+    },
+    {
+      "scene_task_id": 1,
+      "scene_init_idx": 5,
+      "instr_task_id": 6,
+      "sft_proxy_correct": true,
+      "grpo_proxy_correct": true,
+      "agree": true
+    },
+    {
+      "scene_task_id": 2,
+      "scene_init_idx": 15,
+      "instr_task_id": 8,
+      "sft_proxy_correct": true,
+      "grpo_proxy_correct": true,
+      "agree": true
+    },
+    {
+      "scene_task_id": 3,
+      "scene_init_idx": 10,
+      "instr_task_id": 9,
+      "sft_proxy_correct": true,
+      "grpo_proxy_correct": true,
+      "agree": true
+    },
+    {
+      "scene_task_id": 4,
+      "scene_init_idx": 34,
+      "instr_task_id": 9,
+      "sft_proxy_correct": false,
+      "grpo_proxy_correct": false,
+      "agree": true
+    },
+    {
+      "scene_task_id": 5,
+      "scene_init_idx": 23,
+      "instr_task_id": 3,
+      "sft_proxy_correct": true,
+      "grpo_proxy_correct": true,
+      "agree": true
+    },
+    {
+      "scene_task_id": 6,
+      "scene_init_idx": 6,
+      "instr_task_id": 7,
+      "sft_proxy_correct": true,
+      "grpo_proxy_correct": true,
+      "agree": true
+    },
+    {
+      "scene_task_id": 7,
+      "scene_init_idx": 20,
+      "instr_task_id": 9,
+      "sft_proxy_correct": true,
+      "grpo_proxy_correct": true,
+      "agree": true
+    },
+    {
+      "scene_task_id": 8,
+      "scene_init_idx": 37,
+      "instr_task_id": 1,
+      "sft_proxy_correct": false,
+      "grpo_proxy_correct": false,
+      "agree": true
+    },
+    {
+      "scene_task_id": 9,
+      "scene_init_idx": 37,
+      "instr_task_id": 7,
+      "sft_proxy_correct": true,
+      "grpo_proxy_correct": true,
+      "agree": true
+    }
+  ],
+  "source_logs": {
+    "sft": "LANGGROUND-libero_spatial-2026_09_18-21_33_02--sft_language_grounding.jsonl",
+    "grpo": "LANGGROUND-libero_spatial-2026_09_18-21_44_31--grpo_language_grounding.jsonl"
+  }
+}
